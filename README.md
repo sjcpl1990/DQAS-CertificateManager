@@ -49,16 +49,21 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+This is fully self-contained: on first run it creates its own database and
+a default `DQAS Certificates/` certificates-root folder automatically — no
+external paths to configure to get started. Both are git-ignored, so a
+fresh clone always starts empty; real certificate data never gets committed.
+
 ## Required setup
 
 Because certificate QR codes must route through the app to check validity,
 you **must** deploy this app at a permanent public URL and set it under
 **Settings → App base URL** before generating QR codes.
 
-Also set **Settings → Certificates root folder** to wherever your source
-certificates live — this is also used as the base for this app's output
-folders (`Renamed/`, `Certificate with QR_<Trade>/`, master PDFs, and the
-print Excel files).
+If your source certificates live somewhere else (e.g. a network share),
+change **Settings → Certificates root folder** to point there instead — it's
+also used as the base for this app's output folders (`Renamed/`,
+`Certificate with QR_<Trade>/`, master PDFs, and the print Excel files).
 
 ## Deploying for a permanent public URL
 
@@ -68,10 +73,20 @@ print Excel files).
 
 ## Data storage
 
-SQLite (`dqas_certificates.db`), configured via `DB_PATH` at the top of
-`app.py` — created automatically on first run. Back it up regularly; a
-backup download button is available in the Settings tab. (`.db` files are
-git-ignored — this repo tracks code only.)
+SQLite (`dqas_certificates.db`), created automatically on first run under
+your local app-data folder (`%LOCALAPPDATA%\DQASCertificateManager\` on
+Windows; `~/DQASCertificateManager/` elsewhere) — **not** next to the
+script. This is deliberate: SQLite opens a fresh connection per operation,
+which needs real file-locking, and cloud-sync or network drives (OneDrive,
+Google Drive, a mapped network share) can silently corrupt the database
+file under that pattern ("database disk image is malformed") — a real
+failure this project hit during development on a mapped drive. If you want
+the database somewhere specific, change `DB_PATH` at the top of `app.py` —
+just make sure it points at a genuine local disk, not a synced/network one.
+
+Back the database up regularly; a backup download button is available in
+the Settings tab. `.db` files and the local `DQAS Certificates/` folder are
+git-ignored — this repo tracks code only, never certificate data.
 
 ## Files
 

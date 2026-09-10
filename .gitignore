@@ -4,4 +4,8 @@ __pycache__/
 *.db.bak_*
 .venv/
 venv/
+
+# Default local certificates root and its output subfolders/assets —
+# real employee certificate data and signatures should not go into git.
+/DQAS Certificates/
 _assets/

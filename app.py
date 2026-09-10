@@ -22,8 +22,30 @@ import streamlit as st
 
 import common
 
-DB_PATH = r"D:\Dnyanesh\Projects\BIRLA Punya QR Code Database\dqas_certificates.db"
-DEFAULT_CERTS_ROOT = r"Z:\My Folders\Projects\Birla Punya\DQAS Certificates"
+# The app is self-contained: it creates its own database and a default
+# certificates folder automatically, no external paths to configure to get
+# started. The certificates folder defaults to right next to this script —
+# ordinary file read/write there is fine wherever the repo is checked out.
+#
+# The *database* deliberately does NOT default next to the script: SQLite
+# opens and closes a new connection per operation, which relies on real
+# file-locking semantics that cloud-sync/network drives (OneDrive, Google
+# Drive, a mapped network share — confirmed on this machine's Z:\) can
+# silently break, corrupting the file ("database disk image is malformed")
+# after just a few writes. A per-user local-appdata folder is guaranteed to
+# be on a real local disk regardless of where this repo itself lives.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _local_data_dir():
+    base = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
+    data_dir = os.path.join(base, "DQASCertificateManager")
+    os.makedirs(data_dir, exist_ok=True)
+    return data_dir
+
+
+DB_PATH = os.path.join(_local_data_dir(), "dqas_certificates.db")
+DEFAULT_CERTS_ROOT = os.path.join(_APP_DIR, "DQAS Certificates")
 
 APP_TITLE = "DQAS Certificate Manager"
 APP_CAPTION = "DQAS Certificate Manager — Birla Punya"
