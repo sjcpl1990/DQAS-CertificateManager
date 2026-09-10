@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.db
+*.db.bak_*
+.venv/
+venv/
+_assets/
