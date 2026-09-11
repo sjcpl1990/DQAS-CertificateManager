@@ -1277,6 +1277,80 @@ def main():
                             mime="text/html",
                         )
 
+        st.divider()
+        st.markdown("#### 4. Stamp all pending certificates")
+        st.caption(
+            "Certificates get skipped during Process Certificates if the QR couldn't be "
+            "built yet (e.g. the base URL or positions weren't set at the time). This "
+            "catches those up using the *current* locked positions and settings — writes "
+            "the stamped file (and, in static mode, the verification page) for every "
+            "certificate that doesn't have a stamped file yet."
+        )
+        df_pending = get_certificates()
+        df_pending = df_pending[df_pending["stamped_path"].isna() | (df_pending["stamped_path"] == "")]
+        if df_pending.empty:
+            st.caption("Nothing pending — every certificate already has a stamped file.")
+        else:
+            st.write(f"**{len(df_pending)} certificate(s) pending:** " + ", ".join(df_pending["cert_id"].tolist()))
+            if st.button("Stamp all pending certificates", type="primary"):
+                bulk_results = []
+                bulk_link_mode = common.get_setting(DB_PATH, "link_mode", "static")
+                bulk_certs_root = common.get_setting(DB_PATH, "certs_root_folder", DEFAULT_CERTS_ROOT)
+                for _, prow in df_pending.iterrows():
+                    p_cert_id = prow["cert_id"]
+                    p_source = None
+                    for p in (prow.get("renamed_path"), prow.get("source_path")):
+                        if p and os.path.exists(p):
+                            p_source = p
+                            break
+                    if p_source is None:
+                        bulk_results.append(f"❌ {p_cert_id}: no local certificate file found, skipped.")
+                        continue
+
+                    p_data = build_cert_qr_target(p_cert_id, cert=prow)
+                    if not p_data:
+                        bulk_results.append(f"❌ {p_cert_id}: QR target unavailable (check Settings → Link mode), skipped.")
+                        continue
+
+                    p_base_img = common.load_certificate_image(p_source)
+                    p_stamped = common.stamp_certificate(p_base_img, p_cert_id, p_data, cur_x, cur_y, cur_size)
+                    p_stamped = apply_signature_if_set(p_stamped)
+
+                    p_trade_folder = safe_name(get_trade_name(prow["trade_code"]))
+                    p_qr_dir = os.path.join(bulk_certs_root, f"Certificate with QR_{p_trade_folder}")
+                    os.makedirs(p_qr_dir, exist_ok=True)
+                    p_base_fname = safe_name(f"{p_cert_id}_{prow['person_name']}_{prow.get('employee_id') or 'NA'}")
+                    p_stamped_path = os.path.join(p_qr_dir, f"{p_base_fname}.pdf")
+                    p_stamped.convert("RGB").save(p_stamped_path, "PDF")
+
+                    update_certificate(
+                        p_cert_id, prow["person_name"], prow["employee_id"], prow["trade_code"],
+                        prow["designation"], prow["certificate_no"], prow["link"], prow["source_path"],
+                        prow["renamed_path"], p_stamped_path, prow["issue_date"], prow["expiry_date"], prow["status"],
+                    )
+
+                    if bulk_link_mode == "static":
+                        p_new_cert = get_certificate(p_cert_id)
+                        p_verify_dir = os.path.join(bulk_certs_root, f"Verify_{p_trade_folder}")
+                        os.makedirs(p_verify_dir, exist_ok=True)
+                        p_verify_path = os.path.join(p_verify_dir, f"{p_new_cert['verify_token']}.html")
+                        with open(p_verify_path, "w", encoding="utf-8") as f:
+                            f.write(build_static_verification_html(p_new_cert))
+                        bulk_results.append(f"✅ {p_cert_id} stamped + verification page generated.")
+                    else:
+                        bulk_results.append(f"✅ {p_cert_id} stamped.")
+
+                st.session_state["bulk_stamp_results"] = bulk_results
+                st.rerun()
+
+        if "bulk_stamp_results" in st.session_state:
+            st.markdown("##### Results")
+            for r in st.session_state["bulk_stamp_results"]:
+                st.write(r)
+            if st.button("Clear results", key="clear_bulk_stamp"):
+                del st.session_state["bulk_stamp_results"]
+                st.rerun()
+
     # ── Test ───────────────────────────────────────────────────────────
     with tabs[4]:
         st.subheader("Test a certificate scan")
