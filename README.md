@@ -81,7 +81,7 @@ output folders (`Renamed/`, `Certificate with QR_<Trade>/`,
 ### No-hosting setup (static verification page — the default)
 
 1. Enable **GitHub Pages** on this repo: **Settings → Pages → Source: Deploy
-   from a branch → Branch: `master`, folder: `/docs`** (a `docs/` folder
+   from a branch → Branch: `main`, folder: `/docs`** (a `docs/` folder
    with a placeholder page and a `robots.txt` disallowing crawlers is
    already included, ready to push).
 2. Note the URL GitHub gives you, e.g.
