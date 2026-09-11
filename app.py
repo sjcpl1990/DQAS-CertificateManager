@@ -273,18 +273,24 @@ def find_existing_certificate(certificate_no, employee_id, trade_code, issue_dat
 # ----------------------------------------------------------------------
 
 def build_cert_qr_target(cert_id, cert=None):
+    # cert may be a dict, a pandas Series (from a DataFrame row), or None —
+    # never test it for truthiness directly (a Series' truth value is
+    # ambiguous); check "is None" and use .get(), which both dict and
+    # Series support identically.
     mode = common.get_setting(DB_PATH, "link_mode", "static")
 
     if mode == "direct":
-        cert = cert or get_certificate(cert_id)
-        return (cert or {}).get("link") or None
+        if cert is None:
+            cert = get_certificate(cert_id)
+        return (cert.get("link") or None) if cert is not None else None
 
     if mode == "static":
         pages_base = common.get_setting(DB_PATH, "pages_base_url", "").rstrip("/")
         if not pages_base:
             return None
-        cert = cert or get_certificate(cert_id)
-        token = (cert or {}).get("verify_token")
+        if cert is None:
+            cert = get_certificate(cert_id)
+        token = cert.get("verify_token") if cert is not None else None
         if not token:
             return None
         # A random per-certificate token, not the (sequential, guessable)
