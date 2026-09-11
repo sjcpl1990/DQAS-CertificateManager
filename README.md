@@ -33,9 +33,16 @@ Foremen, etc.) — organized by trade, global (no per-site grouping).
     self-contained page, generated per certificate, that checks the expiry
     date **in the visitor's own browser**. No app hosting needed at all —
     just host the generated `.html` files as static files (e.g. GitHub
-    Pages, see below). The one limitation: revoking a certificate *after*
-    its page was generated won't show up until that page is regenerated
-    and reshared.
+    Pages, see below). Each page's URL is a random per-certificate token
+    (not the certificate ID), and every page is marked `noindex` — so
+    finding one page doesn't let anyone enumerate the rest, and search
+    engines won't index them. That said: on a free hosting plan there's no
+    real login gate available, so anyone with the *exact* link (normally
+    obtained only by scanning that specific certificate's QR) can open it.
+    If that's not acceptable for this data, use Direct link mode instead —
+    it publishes nothing anywhere. Also: revoking a certificate *after* its
+    page was generated won't show up until that page is regenerated and
+    reshared.
   - **Direct link** — QR encodes the certificate's own link, straight
     through. Nothing to host, but no automatic Valid/Expired check —
     the viewer relies on the dates already printed on the certificate.
@@ -74,8 +81,9 @@ output folders (`Renamed/`, `Certificate with QR_<Trade>/`,
 ### No-hosting setup (static verification page — the default)
 
 1. Enable **GitHub Pages** on this repo: **Settings → Pages → Source: Deploy
-   from a branch → Branch: `master`, folder: `/docs`** (create an empty
-   `docs/` folder and push it if GitHub won't let you pick it yet).
+   from a branch → Branch: `master`, folder: `/docs`** (a `docs/` folder
+   with a placeholder page and a `robots.txt` disallowing crawlers is
+   already included, ready to push).
 2. Note the URL GitHub gives you, e.g.
    `https://<your-username>.github.io/<repo-name>`.
 3. In the app, set **Settings → Link mode → Static verification page →
@@ -84,6 +92,18 @@ output folders (`Renamed/`, `Certificate with QR_<Trade>/`,
 4. After each **Process Certificates** run, copy the generated
    `Verify_<Trade>/*.html` files into this repo's `docs/` folder, then
    commit and push. GitHub Pages serves them within a minute or two.
+
+**On privacy**: these generated pages carry real names and employee IDs,
+and GitHub Pages on the Free plan has no real access-control option — a
+private repo's Pages site is still publicly reachable by URL. Two things
+are already built in to limit exposure: each page's filename is a random
+per-certificate token (not the sequential, guessable certificate ID), and
+every page is marked `noindex` so search engines won't index it. That
+leaves each page reachable only by whoever has that *specific* link —
+normally obtained by scanning that specific certificate's own QR code,
+the same exposure the printed certificate already has. If even that's not
+acceptable for this data, switch to **Direct link** mode instead, which
+publishes nothing anywhere.
 
 ### Hosting the app itself (only needed for "App redirect" mode)
 

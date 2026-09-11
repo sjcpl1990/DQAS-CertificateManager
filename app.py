@@ -14,6 +14,7 @@ import re
 import io
 import json
 import shutil
+import secrets
 import zipfile
 from datetime import datetime, date
 from html import escape as html_escape
@@ -88,6 +89,7 @@ def init_db():
             issue_date TEXT NOT NULL,
             expiry_date TEXT NOT NULL,
             status TEXT DEFAULT 'Active',
+            verify_token TEXT,
             created_at TEXT,
             updated_at TEXT
         )
@@ -99,6 +101,15 @@ def init_db():
         )
     """)
     conn.execute("CREATE TABLE IF NOT EXISTS trades (code TEXT PRIMARY KEY, name TEXT)")
+
+    # Migrate: static-mode URLs use a random token, not the (guessable,
+    # sequential) certificate ID, so pages can't be enumerated by anyone
+    # who finds one. Add the column and backfill any rows that predate it.
+    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(dqas_certificates)").fetchall()]
+    if "verify_token" not in existing_cols:
+        conn.execute("ALTER TABLE dqas_certificates ADD COLUMN verify_token TEXT")
+    for (cid,) in conn.execute("SELECT cert_id FROM dqas_certificates WHERE verify_token IS NULL OR verify_token = ''").fetchall():
+        conn.execute("UPDATE dqas_certificates SET verify_token=? WHERE cert_id=?", (secrets.token_urlsafe(12), cid))
 
     conn.commit()
     conn.close()
@@ -156,16 +167,28 @@ def next_cert_id(trade_code):
 def add_certificate(cert_id, person_name, employee_id, trade_code, designation, certificate_no,
                      link, source_path, renamed_path, stamped_path, issue_date, expiry_date):
     now = datetime.now().isoformat(timespec="seconds")
+    token = secrets.token_urlsafe(12)
     conn = common.get_conn(DB_PATH)
     conn.execute(
         "INSERT INTO dqas_certificates (cert_id, person_name, employee_id, trade_code, designation, "
         "certificate_no, link, source_path, renamed_path, stamped_path, issue_date, expiry_date, "
-        "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)",
+        "status, verify_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?)",
         (cert_id, person_name, employee_id, trade_code, designation, certificate_no, link,
-         source_path, renamed_path, stamped_path, issue_date, expiry_date, now, now),
+         source_path, renamed_path, stamped_path, issue_date, expiry_date, token, now, now),
     )
     conn.commit()
     conn.close()
+
+
+def rotate_verify_token(cert_id):
+    """Issues a fresh random token for a certificate's static verification
+    URL, invalidating the old one — e.g. if a printed QR is compromised."""
+    token = secrets.token_urlsafe(12)
+    conn = common.get_conn(DB_PATH)
+    conn.execute("UPDATE dqas_certificates SET verify_token=? WHERE cert_id=?", (token, cert_id))
+    conn.commit()
+    conn.close()
+    return token
 
 
 def update_certificate(cert_id, person_name, employee_id, trade_code, designation, certificate_no,
@@ -260,7 +283,14 @@ def build_cert_qr_target(cert_id, cert=None):
         pages_base = common.get_setting(DB_PATH, "pages_base_url", "").rstrip("/")
         if not pages_base:
             return None
-        return f"{pages_base}/{cert_id}.html"
+        cert = cert or get_certificate(cert_id)
+        token = (cert or {}).get("verify_token")
+        if not token:
+            return None
+        # A random per-certificate token, not the (sequential, guessable)
+        # cert_id — so finding one page's URL doesn't let anyone enumerate
+        # every other certificate.
+        return f"{pages_base}/{token}.html"
 
     base_url = common.get_setting(DB_PATH, "base_url", "").rstrip("/")
     if not base_url:
@@ -387,6 +417,7 @@ def build_static_verification_html(cert):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>Certificate Verification — {html_escape(cert['cert_id'])}</title>
 <style>
   body {{ font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#f4f6f8; margin:0; padding:24px; }}
@@ -715,11 +746,16 @@ def main():
                             st.download_button(
                                 "Download verification page",
                                 build_static_verification_html(row.to_dict()).encode("utf-8"),
-                                file_name=f"{row['cert_id']}.html",
+                                file_name=f"{row.get('verify_token') or row['cert_id']}.html",
                                 mime="text/html",
                                 key=f"verifypage_{row['cert_id']}",
-                                help="Re-download and re-upload this after editing the certificate (e.g. after adding its link), so the hosted page matches.",
+                                help="Re-download and re-upload this after editing the certificate (e.g. after adding its link), so the hosted page matches. Filename must match the URL the QR encodes.",
                             )
+                            if st.button("🔄 Rotate verification link", key=f"rotate_{row['cert_id']}",
+                                         help="Issues a new random URL for this certificate's static page and invalidates the old one — use if a printed QR/link was compromised. You'll need to reprint the QR and re-host the new .html file afterward."):
+                                rotate_verify_token(row["cert_id"])
+                                st.success("Link rotated — regenerate and re-stamp this certificate's QR, then re-upload its new verification page.")
+                                st.rerun()
                         if common.zoho_configured(DB_PATH) and st.button("🔗 Get link from WorkDrive", key=f"zlink_{row['cert_id']}"):
                             file_for_link = row.get("stamped_path") or row.get("renamed_path")
                             if not file_for_link or not os.path.exists(file_for_link):
@@ -882,9 +918,10 @@ def main():
             )
         if link_mode == "static":
             st.caption(
-                "📄 Link mode: **static verification page**. A `Verify_<Trade>/<cert_id>.html` "
-                "file is generated per certificate — host these as static files (e.g. GitHub "
-                "Pages) at the base URL set in Settings."
+                "📄 Link mode: **static verification page**. A `Verify_<Trade>/<random-token>.html` "
+                "file is generated per certificate — the filename is a random token, not the "
+                "certificate ID, so pages can't be enumerated. Host these as static files (e.g. "
+                "GitHub Pages) at the base URL set in Settings."
             )
         elif link_mode == "direct" and not common.zoho_configured(DB_PATH):
             st.info(
@@ -1007,11 +1044,12 @@ def main():
                         )
 
                         if link_mode == "static" and qr_ready:
+                            new_cert = get_certificate(cert_id)
                             verify_dir = os.path.join(certs_root, f"Verify_{trade_folder}")
                             os.makedirs(verify_dir, exist_ok=True)
-                            verify_path = os.path.join(verify_dir, f"{cert_id}.html")
+                            verify_path = os.path.join(verify_dir, f"{new_cert['verify_token']}.html")
                             with open(verify_path, "w", encoding="utf-8") as f:
-                                f.write(build_static_verification_html(get_certificate(cert_id)))
+                                f.write(build_static_verification_html(new_cert))
 
                         link_note = " + WorkDrive link" if link else ""
                         results.append(f"✅ {cert_id} — {erow['Person Name']} ({trade_code}){link_note}")
@@ -1187,7 +1225,7 @@ def main():
                         st.download_button(
                             "Download static verification page (.html)",
                             verify_html.encode("utf-8"),
-                            file_name=f"{sel_cert_id}.html",
+                            file_name=f"{cert.get('verify_token') or sel_cert_id}.html",
                             mime="text/html",
                         )
 
@@ -1291,13 +1329,20 @@ def main():
                 "files as static files (e.g. GitHub Pages) and set the base URL they'll be "
                 "served from below.\n\n"
                 "⚠️ Because it's a static page, revoking a certificate *after* its page was "
-                "generated won't show up until you regenerate and reshare that page."
+                "generated won't show up until you regenerate and reshare that page.\n\n"
+                "🔒 On a free hosting plan (e.g. GitHub Pages on GitHub Free), these pages are "
+                "reachable by anyone with the exact URL even if the repo is private — there's "
+                "no real login gate available without a paid plan. Mitigations already built "
+                "in: each page's URL is a random per-certificate token, not the certificate ID "
+                "(so finding one page doesn't let anyone enumerate the rest), and every page is "
+                "marked `noindex` so search engines won't index it. If that's still not enough "
+                "for this data, use **Direct link** mode instead — it publishes nothing."
             )
             pages_base_url = st.text_input(
                 "Static pages base URL",
                 value=common.get_setting(DB_PATH, "pages_base_url", ""),
                 placeholder="https://yourusername.github.io/DQAS-Certificate-Manager",
-                help="QR codes will encode <this>/<cert_id>.html",
+                help="QR codes will encode <this>/<random-token>.html — a per-certificate random token, not the certificate ID, so pages can't be enumerated.",
             )
         elif new_link_mode == "direct":
             st.markdown(
