@@ -22,6 +22,7 @@ from html import escape as html_escape
 import fitz  # PyMuPDF
 import pandas as pd
 import streamlit as st
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 import common
 
@@ -302,6 +303,19 @@ def build_cert_qr_target(cert_id, cert=None):
     if not base_url:
         return None
     return f"{base_url}/?cert={cert_id}"
+
+
+def normalize_pages_url(url):
+    """Catches the common mistake of pasting a GitHub repo's browsing URL
+    (github.com/<user>/<repo>) instead of its Pages URL
+    (<user>.github.io/<repo>) — same content, wrong domain, so QR codes
+    built from it point nowhere useful. Returns (normalized_url, was_fixed)."""
+    url = (url or "").strip()
+    m = re.match(r"^https?://github\.com/([^/]+)/([^/]+)/?$", url)
+    if m:
+        user, repo = m.group(1), m.group(2)
+        return f"https://{user}.github.io/{repo}", True
+    return url, False
 
 
 def qr_config_status():
@@ -1023,7 +1037,7 @@ def main():
                                 base_img = common.load_certificate_image(renamed_path)
                                 lx = float(common.get_setting(DB_PATH, "stamp_x_pct", "85"))
                                 ly = float(common.get_setting(DB_PATH, "stamp_y_pct", "85"))
-                                lsize = float(common.get_setting(DB_PATH, "stamp_size_pct", "7.2"))
+                                lsize = float(common.get_setting(DB_PATH, "stamp_size_pct", "8.64"))
                                 stamped_img = common.stamp_certificate(base_img, cert_id, data, lx, ly, lsize)
                                 stamped_img = apply_signature_if_set(stamped_img)
                                 stamped_path = os.path.join(qr_dir, f"{base_fname}.pdf")
@@ -1111,7 +1125,7 @@ def main():
         st.markdown("#### 1. Fix QR + Certificate ID position")
         cur_x = float(common.get_setting(DB_PATH, "stamp_x_pct", "85"))
         cur_y = float(common.get_setting(DB_PATH, "stamp_y_pct", "85"))
-        cur_size = float(common.get_setting(DB_PATH, "stamp_size_pct", "7.2"))
+        cur_size = float(common.get_setting(DB_PATH, "stamp_size_pct", "8.64"))
         st.caption(f"Current locked position: X={cur_x:.0f}%, Y={cur_y:.0f}%, Size={cur_size:.0f}%")
 
         if base_img is not None:
@@ -1135,8 +1149,8 @@ def main():
         st.markdown("#### 2. GM signature")
         st.caption(
             "Upload once — it's saved and reused for every certificate. A PNG with a "
-            "transparent background looks best. Position it above the Authorised "
-            "Signatory's printed name."
+            "transparent background looks best. **Click anywhere on the preview below "
+            "to move the signature there.**"
         )
 
         sig_upload = st.file_uploader("GM signature (PNG)", type=["png"], key="sig_upload")
@@ -1154,24 +1168,52 @@ def main():
         if not current_sig_path or not os.path.exists(current_sig_path):
             st.info("Upload a GM signature PNG above to enable this step.")
         elif base_img is None:
-            st.info("Upload a sample certificate above (in section 1) to preview and lock the signature position.")
+            st.info("Upload a sample certificate above (in section 1) to preview and position the signature.")
         else:
             cur_sx = float(common.get_setting(DB_PATH, "sig_x_pct", "50"))
             cur_sy = float(common.get_setting(DB_PATH, "sig_y_pct", "60"))
             cur_ssize = float(common.get_setting(DB_PATH, "sig_size_pct", "15"))
-            st.caption(f"Current locked signature position: X={cur_sx:.0f}%, Y={cur_sy:.0f}%, Size={cur_ssize:.0f}%")
 
-            sig_img = common.load_overlay_image(current_sig_path)
-            sx_pct = st.slider("Signature horizontal position (% from left)", 0, 100, int(cur_sx), key="sig_x_slider")
-            sy_pct = st.slider("Signature vertical position (% from top)", 0, 100, int(cur_sy), key="sig_y_slider")
+            # The "current pick" lives in session state so clicking feels like
+            # dragging — each click moves it, without needing a separate
+            # confirm step. Seeded from the locked position on first visit.
+            if "sig_pick_x" not in st.session_state:
+                st.session_state["sig_pick_x"] = cur_sx
+                st.session_state["sig_pick_y"] = cur_sy
+
             ssize_pct = st.slider("Signature size (% of certificate width)", 3, 40, int(cur_ssize), key="sig_size_slider")
 
-            combined_preview = common.paste_overlay(preview_img if preview_img is not None else base_img, sig_img, sx_pct, sy_pct, ssize_pct)
-            st.image(combined_preview, caption="Preview (QR + Signature)", use_container_width=True)
+            sig_img = common.load_overlay_image(current_sig_path)
+            preview_base = preview_img if preview_img is not None else base_img
+            display_img = common.paste_overlay(
+                preview_base, sig_img,
+                st.session_state["sig_pick_x"], st.session_state["sig_pick_y"], ssize_pct,
+            )
+
+            # Downscale for the click widget so coordinates stay a manageable
+            # size regardless of the certificate's native resolution.
+            display_w = 700
+            scale = display_w / display_img.width
+            display_h = max(1, int(display_img.height * scale))
+            thumb = display_img.resize((display_w, display_h))
+
+            st.caption(
+                f"Current position: X={st.session_state['sig_pick_x']:.0f}%, "
+                f"Y={st.session_state['sig_pick_y']:.0f}% — click below to move it."
+            )
+            coords = streamlit_image_coordinates(thumb, key="sig_click")
+            if coords:
+                clicked_x_pct = max(0.0, min(100.0, coords.get("x", 0) / display_w * 100))
+                clicked_y_pct = max(0.0, min(100.0, coords.get("y", 0) / display_h * 100))
+                if round(clicked_x_pct, 1) != round(st.session_state["sig_pick_x"], 1) or \
+                   round(clicked_y_pct, 1) != round(st.session_state["sig_pick_y"], 1):
+                    st.session_state["sig_pick_x"] = clicked_x_pct
+                    st.session_state["sig_pick_y"] = clicked_y_pct
+                    st.rerun()
 
             if st.button("Lock signature position", type="primary"):
-                common.set_setting(DB_PATH, "sig_x_pct", str(sx_pct))
-                common.set_setting(DB_PATH, "sig_y_pct", str(sy_pct))
+                common.set_setting(DB_PATH, "sig_x_pct", str(st.session_state["sig_pick_x"]))
+                common.set_setting(DB_PATH, "sig_y_pct", str(st.session_state["sig_pick_y"]))
                 common.set_setting(DB_PATH, "sig_size_pct", str(ssize_pct))
                 st.success("Signature position locked. Every certificate stamped from now on will use this position.")
 
@@ -1311,7 +1353,7 @@ def main():
     with tabs[6]:
         st.subheader("Settings")
         st.subheader("Link mode")
-        st.caption("Controls what each certificate's QR code actually encodes.")
+        st.caption("Controls what each certificate's QR code actually encodes. Every field below saves to the database immediately — no separate Save button.")
 
         current_link_mode = common.get_setting(DB_PATH, "link_mode", "static")
         link_mode_options = ["static", "direct", "redirect"]
@@ -1326,6 +1368,8 @@ def main():
             index=link_mode_options.index(current_link_mode) if current_link_mode in link_mode_options else 0,
             format_func=lambda m: link_mode_labels[m],
         )
+        if new_link_mode != current_link_mode:
+            common.set_setting(DB_PATH, "link_mode", new_link_mode)
 
         if new_link_mode == "static":
             st.markdown(
@@ -1344,19 +1388,30 @@ def main():
                 "marked `noindex` so search engines won't index it. If that's still not enough "
                 "for this data, use **Direct link** mode instead — it publishes nothing."
             )
-            pages_base_url = st.text_input(
+            saved_pages_url = common.get_setting(DB_PATH, "pages_base_url", "")
+            pages_url_input = st.text_input(
                 "Static pages base URL",
-                value=common.get_setting(DB_PATH, "pages_base_url", ""),
+                value=saved_pages_url,
                 placeholder="https://yourusername.github.io/DQAS-Certificate-Manager",
                 help="QR codes will encode <this>/<random-token>.html — a per-certificate random token, not the certificate ID, so pages can't be enumerated.",
             )
+            normalized_url, was_fixed = normalize_pages_url(pages_url_input)
+            if was_fixed:
+                st.warning(
+                    f"That's your repo's browsing URL (github.com) — GitHub Pages actually "
+                    f"serves from **{normalized_url}**. Saving the corrected URL instead."
+                )
+            if normalized_url != saved_pages_url:
+                common.set_setting(DB_PATH, "pages_base_url", normalized_url)
+                st.success(f"✅ Saved to database: {normalized_url or '(empty)'}")
+            elif saved_pages_url:
+                st.caption(f"✅ Currently saved: {saved_pages_url}")
         elif new_link_mode == "direct":
             st.markdown(
                 "QR codes encode the certificate's own link directly — nothing to host, "
                 "but no automatic Valid/Expired check on scan. The viewer relies on the "
                 "Issue/Valid Until dates already printed on the certificate."
             )
-            pages_base_url = common.get_setting(DB_PATH, "pages_base_url", "")
         else:
             st.markdown(
                 "QR codes link back to *this app* (`?cert=<id>`), which checks validity "
@@ -1364,20 +1419,17 @@ def main():
                 "public URL — the verification endpoint is **publicly accessible**, no "
                 "login needed to follow a scan."
             )
-            base_url = st.text_input(
+            saved_base_url = common.get_setting(DB_PATH, "base_url", "")
+            base_url_input = st.text_input(
                 "App base URL",
-                value=common.get_setting(DB_PATH, "base_url", ""),
+                value=saved_base_url,
                 placeholder="https://yourcompany-dqas.streamlit.app",
-            )
-            pages_base_url = common.get_setting(DB_PATH, "pages_base_url", "")
-
-        if st.button("Save link mode settings"):
-            common.set_setting(DB_PATH, "link_mode", new_link_mode)
-            if new_link_mode == "static":
-                common.set_setting(DB_PATH, "pages_base_url", pages_base_url)
-            elif new_link_mode == "redirect":
-                common.set_setting(DB_PATH, "base_url", base_url)
-            st.success("Link mode saved.")
+            ).strip()
+            if base_url_input != saved_base_url:
+                common.set_setting(DB_PATH, "base_url", base_url_input)
+                st.success(f"✅ Saved to database: {base_url_input or '(empty)'}")
+            elif saved_base_url:
+                st.caption(f"✅ Currently saved: {saved_base_url}")
 
         st.divider()
         st.subheader("Certificates root folder")

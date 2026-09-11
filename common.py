@@ -454,28 +454,31 @@ def compute_expiry_date(issue_date_str, validity_months):
 # ----------------------------------------------------------------------
 
 def make_qr_id_stamp(cert_id, data, target_w):
-    """A compact QR code with the certificate ID printed below it —
-    the unit that gets stamped onto a certificate file."""
+    """A compact QR code with the certificate ID printed below it, always
+    on a single line — the unit that gets stamped onto a certificate file."""
     qr_img = _make_qr_pixels(data, target_w)
-    w = qr_img.width
-    font_size = max(12, w // 11)
-    font_id, _ = _load_fonts(font_size, font_size)
-
+    qr_w = qr_img.width
     metrics = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    max_text_w = w - 20
-    id_lines = _wrap_lines(metrics, cert_id, font_id, max_text_w)
+
+    # Shrink the font until the ID fits on one line, rather than wrapping —
+    # a wrapped certificate ID is hard to read and easy to mistype.
+    font_size = max(10, qr_w // 8)
+    font_id, _ = _load_fonts(font_size, font_size)
+    while font_size > 10 and metrics.textlength(cert_id, font=font_id) > qr_w - 10:
+        font_size -= 1
+        font_id, _ = _load_fonts(font_size, font_size)
+
+    # If it still doesn't fit at the smallest legible size (a pathologically
+    # long ID), widen the canvas rather than clip or overflow the text.
+    text_w = metrics.textlength(cert_id, font=font_id)
+    canvas_w = int(max(qr_w, text_w + 20))
     line_h = _line_height(font_id)
-    label_h = len(id_lines) * line_h + 20
+    label_h = line_h + 16
 
-    canvas = Image.new("RGB", (w, w + label_h), "white")
-    canvas.paste(qr_img, (0, 0))
+    canvas = Image.new("RGB", (canvas_w, qr_w + label_h), "white")
+    canvas.paste(qr_img, ((canvas_w - qr_w) // 2, 0))
     draw = ImageDraw.Draw(canvas)
-
-    ty = w + 10
-    for line in id_lines:
-        lw = draw.textlength(line, font=font_id)
-        draw.text(((w - lw) / 2, ty), line, fill="black", font=font_id)
-        ty += line_h
+    draw.text(((canvas_w - text_w) / 2, qr_w + 8), cert_id, fill="black", font=font_id)
     return canvas
 
 
