@@ -27,12 +27,21 @@ Foremen, etc.) — organized by trade, global (no per-site grouping).
     correct the detected trade before confirming — nothing is written until
     you click Process. Re-scanning the same source skips certificates already
     imported.
-- QR codes **always** route back through this app (never a direct link to
-  the file) — this is what lets validity be checked on every scan. Scanning
-  an expired certificate's QR shows a clear "Certificate Validity Expired"
-  notice instead of opening the file; a revoked certificate shows
-  "Certificate Revoked"; a valid one shows its expiry date and redirects to
-  the certificate file.
+- **Three QR link modes** (Settings → Link mode) — pick whichever fits how
+  you're running this:
+  - **Static verification page** *(default)* — QR links to a small
+    self-contained page, generated per certificate, that checks the expiry
+    date **in the visitor's own browser**. No app hosting needed at all —
+    just host the generated `.html` files as static files (e.g. GitHub
+    Pages, see below). The one limitation: revoking a certificate *after*
+    its page was generated won't show up until that page is regenerated
+    and reshared.
+  - **Direct link** — QR encodes the certificate's own link, straight
+    through. Nothing to host, but no automatic Valid/Expired check —
+    the viewer relies on the dates already printed on the certificate.
+  - **App redirect** — QR links back to *this app* (`?cert=<id>`), checked
+    server-side on every scan. Requires deploying this app itself at a
+    permanent public URL.
 - **Zoho WorkDrive integration** (optional) — upload certificates and fetch
   a public share link automatically instead of copying links in by hand.
   Configure once under Settings.
@@ -56,16 +65,27 @@ fresh clone always starts empty; real certificate data never gets committed.
 
 ## Required setup
 
-Because certificate QR codes must route through the app to check validity,
-you **must** deploy this app at a permanent public URL and set it under
-**Settings → App base URL** before generating QR codes.
+If your source certificates live somewhere else than the local
+`DQAS Certificates/` folder (e.g. a network share), change **Settings →
+Certificates root folder** — it's also used as the base for this app's
+output folders (`Renamed/`, `Certificate with QR_<Trade>/`,
+`Verify_<Trade>/`, master PDFs, and the print Excel files).
 
-If your source certificates live somewhere else (e.g. a network share),
-change **Settings → Certificates root folder** to point there instead — it's
-also used as the base for this app's output folders (`Renamed/`,
-`Certificate with QR_<Trade>/`, master PDFs, and the print Excel files).
+### No-hosting setup (static verification page — the default)
 
-## Deploying for a permanent public URL
+1. Enable **GitHub Pages** on this repo: **Settings → Pages → Source: Deploy
+   from a branch → Branch: `master`, folder: `/docs`** (create an empty
+   `docs/` folder and push it if GitHub won't let you pick it yet).
+2. Note the URL GitHub gives you, e.g.
+   `https://<your-username>.github.io/<repo-name>`.
+3. In the app, set **Settings → Link mode → Static verification page →
+   Static pages base URL** to that URL (append `/docs` if you didn't set
+   `docs/` as the Pages root — check what GitHub shows you).
+4. After each **Process Certificates** run, copy the generated
+   `Verify_<Trade>/*.html` files into this repo's `docs/` folder, then
+   commit and push. GitHub Pages serves them within a minute or two.
+
+### Hosting the app itself (only needed for "App redirect" mode)
 
 - [Streamlit Community Cloud](https://streamlit.io/cloud) (free, simplest)
 - Your own server / internal network with a fixed domain
