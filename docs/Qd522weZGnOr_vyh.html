@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Certificate Verification — CERT-DQAS-STF-03</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#f4f6f8; margin:0; padding:24px; }
+  .card { max-width:480px; margin:40px auto; background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:32px; text-align:center; }
+  .banner { border-radius:8px; padding:20px; margin-bottom:20px; }
+  .valid { background:#e6f7ec; border:2px solid #2e7d32; }
+  .bad { background:#ffe5e5; border:2px solid #d32f2f; }
+  h2 { margin:0 0 8px; font-size:22px; }
+  .valid h2 { color:#2e7d32; }
+  .bad h2 { color:#d32f2f; }
+  .meta { text-align:left; font-size:14px; color:#333; margin-top:16px; line-height:1.7; }
+  .meta b { color:#000; }
+  a.btn { display:inline-block; margin-top:18px; padding:10px 26px; background:#00AEDA; color:#fff; text-decoration:none; border-radius:6px; font-weight:600; }
+  .note { font-size:12px; color:#888; margin-top:22px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="banner" class="banner"><h2 id="status-title">Checking…</h2><p id="status-text"></p></div>
+  <div class="meta"><div><b>Name:</b> ANIL KUMAR TIWARI</div>
+<div><b>Trade:</b> STEEL FORMAN</div>
+<div><b>Employee ID:</b> SJC013153</div>
+<div><b>Certificate ID:</b> CERT-DQAS-STF-03</div>
+<div><b>Issued:</b> 2026-09-01</div>
+<div><b>Valid Until:</b> 2027-02-28</div></div>
+  <div id="link-area"></div>
+  <p class="note">
+    Generated 2026-09-11 16:17. This page checks the date in your own browser — no server involved.<br>
+    If this certificate is later revoked, that change won't appear here until this page is regenerated and reshared.
+  </p>
+</div>
+<script>
+(function () {
+  var expiry = new Date("2027-02-28T23:59:59");
+  var certLink = "";
+  var isRevoked = false;
+  var validUntil = "2027-02-28";
+  var banner = document.getElementById("banner");
+  var title = document.getElementById("status-title");
+  var text = document.getElementById("status-text");
+  var linkArea = document.getElementById("link-area");
+
+  if (isRevoked) {
+    banner.className = "banner bad";
+    title.textContent = "\u274c Certificate Revoked";
+    text.textContent = "This certificate had been revoked as of when this page was last generated.";
+  } else if (new Date() > expiry) {
+    banner.className = "banner bad";
+    title.textContent = "\u274c Certificate Validity Expired";
+    text.textContent = "This certificate was valid until " + validUntil + " and has now expired.";
+  } else {
+    banner.className = "banner valid";
+    title.textContent = "\u2705 Valid Certificate";
+    text.textContent = "Valid until " + validUntil + ".";
+    if (certLink) {
+      linkArea.innerHTML = '<a class="btn" href="' + certLink + '">View Certificate</a>';
+    } else {
+      text.textContent += " (Certificate link not set yet.)";
+    }
+  }
+})();
+</script>
+</body>
+</html>
