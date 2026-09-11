@@ -1023,7 +1023,7 @@ def main():
                                 base_img = common.load_certificate_image(renamed_path)
                                 lx = float(common.get_setting(DB_PATH, "stamp_x_pct", "85"))
                                 ly = float(common.get_setting(DB_PATH, "stamp_y_pct", "85"))
-                                lsize = float(common.get_setting(DB_PATH, "stamp_size_pct", "18"))
+                                lsize = float(common.get_setting(DB_PATH, "stamp_size_pct", "7.2"))
                                 stamped_img = common.stamp_certificate(base_img, cert_id, data, lx, ly, lsize)
                                 stamped_img = apply_signature_if_set(stamped_img)
                                 stamped_path = os.path.join(qr_dir, f"{base_fname}.pdf")
@@ -1111,7 +1111,7 @@ def main():
         st.markdown("#### 1. Fix QR + Certificate ID position")
         cur_x = float(common.get_setting(DB_PATH, "stamp_x_pct", "85"))
         cur_y = float(common.get_setting(DB_PATH, "stamp_y_pct", "85"))
-        cur_size = float(common.get_setting(DB_PATH, "stamp_size_pct", "18"))
+        cur_size = float(common.get_setting(DB_PATH, "stamp_size_pct", "7.2"))
         st.caption(f"Current locked position: X={cur_x:.0f}%, Y={cur_y:.0f}%, Size={cur_size:.0f}%")
 
         if base_img is not None:

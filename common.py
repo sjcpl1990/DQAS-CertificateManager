@@ -458,7 +458,7 @@ def make_qr_id_stamp(cert_id, data, target_w):
     the unit that gets stamped onto a certificate file."""
     qr_img = _make_qr_pixels(data, target_w)
     w = qr_img.width
-    font_size = max(28, w // 10)
+    font_size = max(12, w // 11)
     font_id, _ = _load_fonts(font_size, font_size)
 
     metrics = ImageDraw.Draw(Image.new("RGB", (1, 1)))
